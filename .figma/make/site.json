@@ -1,0 +1,11 @@
+{
+  "title": "OnTheSpot",
+  "description": "Think fast. Speak clearly.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
