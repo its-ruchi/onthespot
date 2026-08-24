@@ -344,7 +344,7 @@ export default function SpeakRecordScreen({
               <p className="text-sm text-ink leading-relaxed whitespace-pre-wrap overflow-y-auto flex-1 min-h-0">{notes}</p>
             ) : (
               <p className="text-sm text-muted leading-relaxed flex-1 min-h-0 overflow-y-auto">
-                No notes yet. You can still speak from memory — jot keywords on the notes step next time if you want a cheat sheet.
+                No notes yet.
               </p>
             )}
             <p className="text-xs text-muted mt-3 flex-shrink-0">Recording keeps going. Read these out if you want.</p>

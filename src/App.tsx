@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import SpeakNotesScreen from './SpeakNotesScreen'
 import SpeakRecordScreen from './SpeakRecordScreen'
 import { scoreFromTranscript, type FeedbackData } from './scoreSpeech'
 
@@ -10,7 +9,6 @@ type Screen =
   | 'spin-category'
   | 'spin-reel'
   | 'speak-prep'
-  | 'speak-notes'
   | 'speak-record'
   | 'speak-feedback'
   | 'write-format'
@@ -1822,26 +1820,16 @@ export default function App() {
         <SpeakPrepScreen prompt={speakPrompt} hint={landedTopic?.teaser}
           notes={speakNotes} onNotesChange={setSpeakNotes}
           researchMins={settings.researchMins} speechMins={settings.speechMins}
-          onReady={() => setScreen('speak-notes')}
+          onReady={() => setScreen('speak-record')}
           onBack={() => fromSurprise ? goHome() : setScreen('spin-reel')}
           onSettings={openSettings} />
-      )}
-      {screen === 'speak-notes' && (
-        <SpeakNotesScreen
-          prompt={speakPrompt}
-          notes={speakNotes}
-          onNotesChange={setSpeakNotes}
-          onStartSpeaking={() => setScreen('speak-record')}
-          onBack={() => setScreen('speak-prep')}
-          onSkip={() => setScreen('speak-record')}
-        />
       )}
       {screen === 'speak-record' && (
         <SpeakRecordScreen
           prompt={speakPrompt}
           speechMins={settings.speechMins}
           notes={speakNotes}
-          onBack={() => setScreen('speak-notes')}
+          onBack={() => setScreen('speak-prep')}
           onFinish={({ transcript, sttStatus }) => {
             setSpeakFeedback(scoreFromTranscript({
               transcript,
