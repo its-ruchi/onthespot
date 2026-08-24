@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import SpeakNotesScreen from './SpeakNotesScreen'
+import SpeakRecordScreen from './SpeakRecordScreen'
+import { scoreFromTranscript, type FeedbackData } from './scoreSpeech'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -7,6 +10,7 @@ type Screen =
   | 'spin-category'
   | 'spin-reel'
   | 'speak-prep'
+  | 'speak-notes'
   | 'speak-record'
   | 'speak-feedback'
   | 'write-format'
@@ -15,14 +19,6 @@ type Screen =
 
 type WriteFormat = 'LinkedIn Post' | 'Newsletter' | 'Short Story' | 'Opinion'
 type SpinMode = 'speak' | 'write'
-
-interface FeedbackData {
-  headline: string
-  score: number
-  metrics: { label: string; score: number }[]
-  wentWell: string
-  improve: string
-}
 
 interface TopicItem {
   name: string
@@ -350,19 +346,6 @@ TOPIC_POOLS.anything = Object.entries(TOPIC_POOLS)
   .filter(([k]) => k !== 'anything')
   .flatMap(([, v]) => v)
 
-const SPEAK_FEEDBACK: FeedbackData = {
-  headline: 'You showed up.',
-  score: 82,
-  metrics: [
-    { label: 'Clarity', score: 8 },
-    { label: 'Fluency', score: 7 },
-    { label: 'Structure', score: 8 },
-    { label: 'Vocabulary', score: 8 },
-  ],
-  wentWell: 'Your answer had a clear opinion and your example made the argument easy to understand.',
-  improve: 'Your ideas were strong, but you jumped between points. Try using a simple Point → Example → Conclusion structure.',
-}
-
 const WRITE_FEEDBACK: FeedbackData = {
   headline: 'Nice work.',
   score: 84,
@@ -374,6 +357,10 @@ const WRITE_FEEDBACK: FeedbackData = {
   ],
   wentWell: 'Your opening immediately creates curiosity and establishes a clear point of view.',
   improve: 'Your middle section becomes repetitive. Try adding one specific personal example.',
+  wellQuote: null,
+  improveQuote: null,
+  transcript: '',
+  sttStatus: 'ok',
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -1290,6 +1277,8 @@ function WriteHelpModal({ format, onClose }: { format: WriteFormat; onClose: () 
 function SpeakPrepScreen({
   prompt,
   hint,
+  notes,
+  onNotesChange,
   researchMins,
   speechMins,
   onReady,
@@ -1298,6 +1287,8 @@ function SpeakPrepScreen({
 }: {
   prompt: string
   hint?: string
+  notes: string
+  onNotesChange: (value: string) => void
   researchMins: number
   speechMins: number
   onReady: () => void
@@ -1308,7 +1299,6 @@ function SpeakPrepScreen({
   const [secsLeft, setSecsLeft] = useState(prepSecs)
   const [started, setStarted] = useState(false)
   const [done, setDone] = useState(false)
-  const [notes, setNotes] = useState('')
   const [showHint, setShowHint] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const closeHelp = useCallback(() => setShowHelp(false), [])
@@ -1376,10 +1366,14 @@ function SpeakPrepScreen({
           <Btn variant="outline" onClick={() => setShowHelp(true)}>💡 Need Help?</Btn>
         </div>
 
+        <label htmlFor="prep-notes" className="text-xs font-semibold tracking-widest text-muted uppercase mb-2">
+          Optional notes
+        </label>
         <textarea
+          id="prep-notes"
           value={notes}
-          onChange={e => setNotes(e.target.value)}
-          placeholder="Jot down a few thoughts..."
+          onChange={e => onNotesChange(e.target.value)}
+          placeholder={`Keywords for “${prompt}” — not a script. You can keep editing after you are ready.`}
           className="flex-1 min-h-[220px] w-full bg-white border border-border rounded-xl p-4 text-sm text-ink placeholder-border resize-none focus:border-blue transition-colors mb-4 leading-relaxed"
         />
 
@@ -1398,86 +1392,19 @@ function SpeakPrepScreen({
   )
 }
 
-// ─── Speak Record ─────────────────────────────────────────────────────────────
-
-function SpeakRecordScreen({ prompt, speechMins, onFinish }: { prompt: string; speechMins: number; onFinish: () => void }) {
-  const [secsLeft, setSecsLeft] = useState(speechMins * 60)
-  const [recording, setRecording] = useState(false)
-  const [started, setStarted] = useState(false)
-  const [waveHeights, setWaveHeights] = useState<number[]>(
-    Array.from({ length: 28 }, () => 0.15 + Math.random() * 0.2)
-  )
-
-  useEffect(() => {
-    if (!started || secsLeft <= 0) return
-    const id = setInterval(() => {
-      setSecsLeft(s => { if (s <= 1) { onFinish(); return 0 } return s - 1 })
-    }, 1000)
-    return () => clearInterval(id)
-  }, [started, secsLeft, onFinish])
-
-  useEffect(() => {
-    if (!recording) return
-    const id = setInterval(() => {
-      setWaveHeights(Array.from({ length: 28 }, () => 0.1 + Math.random() * 0.9))
-    }, 110)
-    return () => clearInterval(id)
-  }, [recording])
-
-  return (
-    <div className="flex flex-col min-h-screen" style={{ backgroundColor: '#1C1C2E' }}>
-      <header className="flex items-center justify-between px-6 py-4">
-        <span className="text-xs font-semibold tracking-widest text-blue/60 uppercase">SPEAKING</span>
-        <div className="flex items-center gap-2">
-          {recording && <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse inline-block" />}
-          <span className={`text-xs font-medium ${recording ? 'text-red-400' : 'text-muted'}`}>
-            {recording ? 'Recording' : started ? 'Paused' : 'Tap to start'}
-          </span>
-        </div>
-      </header>
-
-      <main className="flex-1 px-6 flex flex-col items-center pb-10 max-w-lg mx-auto w-full fade-up">
-        <p className="text-blue/50 text-sm text-center mt-4 mb-10 leading-relaxed max-w-xs">{prompt}</p>
-        <div className="font-serif text-8xl text-cream tabular-nums mb-10">{fmtTime(secsLeft)}</div>
-
-        <div className="flex items-end gap-[3px] h-14 mb-10">
-          {waveHeights.map((h, i) => (
-            <div key={i} className="w-1 rounded-full transition-all duration-100"
-              style={{ height: `${Math.round(h * 56)}px`, backgroundColor: '#95B1EE', opacity: recording ? 0.5 + h * 0.5 : 0.18 }}
-            />
-          ))}
-        </div>
-
-        <div className="relative mb-12">
-          {recording && (
-            <div className="absolute inset-0 rounded-full pulse-ring" style={{ backgroundColor: '#95B1EE', opacity: 0.25 }} />
-          )}
-          <button
-            onClick={() => { if (!started) setStarted(true); setRecording(r => !r) }}
-            className="relative w-20 h-20 rounded-full flex items-center justify-center text-3xl transition-all duration-200 cursor-pointer"
-            style={{
-              backgroundColor: recording ? 'rgba(239,68,68,0.15)' : '#364C84',
-              border: `2px solid ${recording ? '#ef4444' : '#95B1EE40'}`,
-              boxShadow: recording ? '0 0 28px rgba(239,68,68,0.2)' : 'none',
-            }}
-          >🎤</button>
-        </div>
-
-        <button onClick={onFinish} className="text-sm text-muted hover:text-cream transition-colors cursor-pointer">Finish</button>
-      </main>
-    </div>
-  )
-}
-
 // ─── Feedback ─────────────────────────────────────────────────────────────────
 
 function FeedbackScreen({
-  data, onTryAgain, onDone, onSettings,
+  data, onTryAgain, onDone, onSettings, showTranscript = false,
 }: {
   data: FeedbackData; onTryAgain: () => void; onDone: () => void; onSettings: () => void
+  showTranscript?: boolean
 }) {
   const [bars, setBars] = useState(false)
+  const [openTranscript, setOpenTranscript] = useState(false)
   useEffect(() => { const t = setTimeout(() => setBars(true), 200); return () => clearTimeout(t) }, [])
+
+  const sttBlocked = data.sttStatus === 'unsupported' || data.sttStatus === 'denied' || data.sttStatus === 'error'
 
   return (
     <div className="flex flex-col min-h-screen bg-cream">
@@ -1485,37 +1412,82 @@ function FeedbackScreen({
       <main className="flex-1 px-6 py-8 max-w-lg mx-auto w-full fade-up">
         <h1 className="font-serif text-5xl text-ink mb-10 leading-tight">{data.headline}</h1>
 
-        <div className="bg-navy rounded-2xl p-6 mb-5">
-          <div className="flex items-start gap-6">
-            <div>
-              <p className="text-blue/60 text-xs uppercase tracking-widest mb-1">Score</p>
-              <div className="font-serif text-6xl text-cream leading-none">{data.score}</div>
-              <div className="text-blue/40 text-xs mt-1">/ 100</div>
-            </div>
-            <div className="flex-1 pt-1 space-y-3">
-              {data.metrics.map(m => (
-                <div key={m.label} className="flex items-center gap-3">
-                  <span className="text-blue/60 text-xs w-20 flex-shrink-0">{m.label}</span>
-                  <div className="flex-1 h-0.5 bg-white/10 rounded-full overflow-hidden">
-                    <div className="h-0.5 rounded-full bg-lime transition-all duration-700" style={{ width: bars ? `${m.score * 10}%` : '0%' }} />
+        {sttBlocked ? (
+          <div className="bg-navy rounded-2xl p-6 mb-5">
+            <p className="text-blue/60 text-xs uppercase tracking-widest mb-2">No score</p>
+            <p className="font-serif text-3xl text-cream leading-snug mb-2">We need your words</p>
+            <p className="text-cream/70 text-sm leading-relaxed">
+              Scores come from a transcript of what you said — not a canned 82. Fix the mic, then try again.
+            </p>
+          </div>
+        ) : (
+          <div className="bg-navy rounded-2xl p-6 mb-5">
+            <div className="flex items-start gap-6">
+              <div>
+                <p className="text-blue/60 text-xs uppercase tracking-widest mb-1">Score</p>
+                <div className="font-serif text-6xl text-cream leading-none">{data.score}</div>
+                <div className="text-blue/40 text-xs mt-1">/ 100</div>
+              </div>
+              <div className="flex-1 pt-1 space-y-3">
+                {data.metrics.map(m => (
+                  <div key={m.label} className="flex items-center gap-3">
+                    <span className="text-blue/60 text-xs w-20 flex-shrink-0">{m.label}</span>
+                    <div className="flex-1 h-0.5 bg-white/10 rounded-full overflow-hidden">
+                      <div className="h-0.5 rounded-full bg-lime transition-all duration-700" style={{ width: bars ? `${m.score * 10}%` : '0%' }} />
+                    </div>
+                    <span className="text-cream text-xs tabular-nums flex-shrink-0">{m.score}/10</span>
                   </div>
-                  <span className="text-cream text-xs tabular-nums flex-shrink-0">{m.score}/10</span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <div className="p-5 rounded-xl border border-border bg-white mb-3">
           <p className="text-xs font-semibold uppercase tracking-widest text-muted mb-3">What went well</p>
+          {data.wellQuote && (
+            <blockquote className="border-l-2 border-navy pl-4 mb-3">
+              <p className="font-serif text-ink italic leading-snug">“{data.wellQuote}”</p>
+            </blockquote>
+          )}
           <p className="text-ink text-sm leading-relaxed">{data.wentWell}</p>
         </div>
-        <div className="p-5 rounded-xl border border-blue/30 bg-blue/5 mb-10">
+        <div className="p-5 rounded-xl border border-blue/30 bg-blue/5 mb-5">
           <p className="text-xs font-semibold uppercase tracking-widest text-muted mb-3">One thing to improve</p>
+          {data.improveQuote && (
+            <blockquote className="border-l-2 border-blue pl-4 mb-3">
+              <p className="font-serif text-ink italic leading-snug">“{data.improveQuote}”</p>
+            </blockquote>
+          )}
           <p className="text-ink text-sm leading-relaxed">{data.improve}</p>
         </div>
 
-        <div className="flex items-center gap-4">
+        {showTranscript && (
+          <div className="mb-10">
+            <button
+              type="button"
+              onClick={() => setOpenTranscript(o => !o)}
+              className="w-full text-left p-5 rounded-xl border border-border bg-white cursor-pointer"
+              aria-expanded={openTranscript}
+            >
+              <p className="text-xs font-semibold uppercase tracking-widest text-muted mb-1">
+                {openTranscript ? '▾' : '▸'} What you said
+              </p>
+              {!openTranscript && (
+                <p className="text-sm text-muted">
+                  {data.transcript ? `${data.transcript.split(/\s+/).length} words captured` : 'No transcript captured'}
+                </p>
+              )}
+              {openTranscript && (
+                <p className="text-ink text-sm leading-relaxed mt-3 whitespace-pre-wrap">
+                  {data.transcript || 'Nothing was transcribed this take.'}
+                </p>
+              )}
+            </button>
+          </div>
+        )}
+
+        <div className={`flex items-center gap-4 ${showTranscript ? '' : 'mt-5'}`}>
           <Btn variant="outline" onClick={onTryAgain}>Try Again</Btn>
           <Btn onClick={onDone} className="flex-1">Done</Btn>
         </div>
@@ -1773,6 +1745,8 @@ export default function App() {
   const [landedTopic, setLandedTopic] = useState<TopicItem | null>(null)
 
   const [speakPrompt, setSpeakPrompt] = useState('')
+  const [speakNotes, setSpeakNotes] = useState('')
+  const [speakFeedback, setSpeakFeedback] = useState<FeedbackData | null>(null)
   const [writeFormat, setWriteFormat] = useState<WriteFormat | null>(null)
   const [writePrompt, setWritePrompt] = useState('')
 
@@ -1793,6 +1767,8 @@ export default function App() {
     setLandedTopic(topic)
     if (spinMode === 'speak') {
       setSpeakPrompt(topic.name)
+      setSpeakNotes('')
+      setSpeakFeedback(null)
       setScreen('speak-prep')
     } else {
       setWritePrompt(topic.name)
@@ -1810,6 +1786,8 @@ export default function App() {
     setLandedTopic(topic)
     if (mode === 'speak') {
       setSpeakPrompt(topic.name)
+      setSpeakNotes('')
+      setSpeakFeedback(null)
       setScreen('speak-prep')
     } else {
       setWritePrompt(topic.name)
@@ -1842,16 +1820,42 @@ export default function App() {
       )}
       {screen === 'speak-prep' && (
         <SpeakPrepScreen prompt={speakPrompt} hint={landedTopic?.teaser}
+          notes={speakNotes} onNotesChange={setSpeakNotes}
           researchMins={settings.researchMins} speechMins={settings.speechMins}
-          onReady={() => setScreen('speak-record')}
+          onReady={() => setScreen('speak-notes')}
           onBack={() => fromSurprise ? goHome() : setScreen('spin-reel')}
           onSettings={openSettings} />
       )}
-      {screen === 'speak-record' && (
-        <SpeakRecordScreen prompt={speakPrompt} speechMins={settings.speechMins} onFinish={() => setScreen('speak-feedback')} />
+      {screen === 'speak-notes' && (
+        <SpeakNotesScreen
+          prompt={speakPrompt}
+          notes={speakNotes}
+          onNotesChange={setSpeakNotes}
+          onStartSpeaking={() => setScreen('speak-record')}
+          onBack={() => setScreen('speak-prep')}
+          onSkip={() => setScreen('speak-record')}
+        />
       )}
-      {screen === 'speak-feedback' && (
-        <FeedbackScreen data={SPEAK_FEEDBACK}
+      {screen === 'speak-record' && (
+        <SpeakRecordScreen
+          prompt={speakPrompt}
+          speechMins={settings.speechMins}
+          notes={speakNotes}
+          onBack={() => setScreen('speak-notes')}
+          onFinish={({ transcript, sttStatus }) => {
+            setSpeakFeedback(scoreFromTranscript({
+              transcript,
+              topicName: speakPrompt,
+              teaser: landedTopic?.teaser,
+              speechMins: settings.speechMins,
+              sttStatus,
+            }))
+            setScreen('speak-feedback')
+          }}
+        />
+      )}
+      {screen === 'speak-feedback' && speakFeedback && (
+        <FeedbackScreen data={speakFeedback} showTranscript
           onTryAgain={() => setScreen('speak-prep')}
           onDone={goHome}
           onSettings={openSettings} />
